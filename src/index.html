@@ -1,39 +1,86 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ru">
 	<head>
 		<meta charset="UTF-8" />
-		<link rel="stylesheet" href="styles.css" />
 		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 		<title>Health Break</title>
-		<script type="module" src="/main.js" defer></script>
+		<link rel="stylesheet" href="css/main.css">
+		<link rel="stylesheet" href="css/timer.css">
+		<link rel="stylesheet" href="css/catalog.css">
+		<script type="module" src="js/main.js" defer></script>
 	</head>
-
 	<body>
-		<main class="container">
-			<h1>Welcome to Health Break</h1>
+		<!-- Навигация (меню) -->
+		<nav class="sidebar">
+			<div class="logo">HB</div>
+			<button class="nav-btn active" data-tab="home">🏠 Главная</button>
+			<button class="nav-btn" data-tab="catalog">📚 Каталог</button>
+			<button class="nav-btn" data-tab="settings">⚙️ Настройки</button>
+			<button id="test-notify-btn" style="margin-top: 10px">
+				🔔 Тест уведомления
+			</button>
+		</nav>
 
-			<div class="row">
-				<a href="https://tauri.app" target="_blank">
-					<img src="/assets/tauri.svg" class="logo tauri" alt="Tauri logo" />
-				</a>
-				<a
-					href="https://developer.mozilla.org/en-US/docs/Web/JavaScript"
-					target="_blank"
-				>
-					<img
-						src="/assets/javascript.svg"
-						class="logo vanilla"
-						alt="JavaScript logo"
-					/>
-				</a>
-			</div>
-			<p>Click on the Tauri logo to learn more about the framework</p>
+		<main class="content">
+			<!-- Вкладка: Главная (Таймер) -->
+			<section id="home" class="tab-content active">
+				<div class="home-center">
+					<h1>Таймер здоровья</h1>
+					<div class="timer-display">30:00</div>
 
-			<form class="row" id="greet-form">
-				<input id="greet-input" placeholder="Enter a name..." />
-				<button type="submit">Greet</button>
-			</form>
-			<p id="greet-msg"></p>
+				<div class="timer-controls">
+					<button id="toggle-timer" class="power-btn">
+						<svg
+							viewBox="0 0 24 24"
+							width="32"
+							height="32"
+							stroke="currentColor"
+							stroke-width="2"
+							fill="none"
+							stroke-linecap="round"
+							stroke-linejoin="round"
+						>
+							<path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path>
+							<line x1="12" y1="2" x2="12" y2="12"></line>
+						</svg>
+					</button>
+				</div>
+			</section>
+
+			<!-- Вкладка: Каталог -->
+			<section id="catalog" class="tab-content">
+				<h1>Каталог упражнений</h1>
+				<div id="exercise-grid" class="exercise-grid">
+					<!-- Карточки будут здесь -->
+				</div>
+			</section>
+
+			<!-- Вкладка: Настройки -->
+			<section id="settings" class="tab-content">
+				<h1>Настройки</h1>
+				<label>
+					Время работы (мин):
+					<input type="number" id="duration-input" value="30" />
+				</label>
+				<div class="settings-group">
+					<h3>Звук уведомления</h3>
+					<select id="sound-select"></select>
+					<button id="open-sounds-btn">📂 Добавить свои звуки</button>
+				</div>
+			</section>
 		</main>
+
+		<div id="exercise-modal" class="modal-overlay">
+			<div class="modal-content">
+				<button class="close-modal">&times;</button>
+				<div class="modal-body">
+					<h2 id="modal-title">Название</h2>
+					<div id="modal-media">
+						<!-- Сюда JS вставит img или video -->
+					</div>
+					<p id="modal-desc">Описание упражнения...</p>
+				</div>
+			</div>
+		</div>
 	</body>
 </html>

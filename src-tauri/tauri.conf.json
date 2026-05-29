@@ -9,18 +9,37 @@
 	"app": {
 		"withGlobalTauri": true,
 		"trayIcon": {
-			"iconPath": "icons/icon_tray.png",
+			"iconPath": "icons/icon.png",
 			"showMenuOnLeftClick": false
 		},
 		"windows": [
 			{
+				"label": "main",
 				"title": "Health Break",
 				"width": 800,
-				"height": 600
+				"height": 600,
+				"visible": true
+			},
+			{
+				"label": "notification",
+				"url": "notification.html",
+				"width": 320,
+				"height": 110,
+				"decorations": false,
+				"transparent": true,
+				"alwaysOnTop": true,
+				"visible": false,
+				"resizable": false,
+				"skipTaskbar": true,
+				"shadow": true
 			}
 		],
 		"security": {
-			"csp": null
+			"csp": null,
+			"assetProtocol": {
+				"enable": true,
+				"scope": ["$APPDATA/sounds/*", "$APPDATA/sounds/**/*"]
+			}
 		}
 	},
 	"bundle": {

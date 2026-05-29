@@ -1,8 +1,12 @@
-// Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-#[tauri::command]
-fn greet(name: &str) -> String {
-    format!("Hello, {}! You've been greeted from Rust!", name)
-}
+mod handler;
+mod state;
+
+// Импортируем типы, чтобы использовать их ниже
+use state::{AppState, TimerState};
+use std::sync::Mutex;
+use handler::commands;
+use handler::notification;
+use handler::audio;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -10,12 +14,33 @@ pub fn run() {
         Manager,
         WindowEvent,
         menu::{Menu, MenuItemBuilder},
-        tray::{TrayIconEvent, MouseButton}, // TrayIconBuilder НЕ нужен
+        tray::{TrayIconEvent, MouseButton},
     };
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![greet])
+        
+        // Инициализируем состояние
+        .manage(AppState(Mutex::new(TimerState {
+            is_running: false,
+            duration_secs: 30 * 60,
+            running_flag: None, // Изначально потока нет
+        })))
+
+        .invoke_handler(tauri::generate_handler![
+            commands::start_timer,
+            commands::stop_timer,
+            commands::get_exercises,
+            commands::set_duration,
+
+            notification::show_notification,
+            notification::notification_clicked,
+            notification::close_notification,
+
+            audio::get_sounds,
+            audio::open_sounds_folder
+        ])
+        
         .setup(|app| {
             // создаём только МЕНЮ, сам трей создаст Tauri из конфига
             let quit = MenuItemBuilder::with_id("quit", "Выход").build(app)?;

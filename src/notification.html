@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="ru">
+	<head>
+		<meta charset="UTF-8" />
+		<style>
+			body {
+				margin: 0;
+				padding: 0;
+				/* Прозрачный фон страницы, чтобы видеть скругления */
+				background: transparent;
+				font-family: 'Segoe UI', sans-serif;
+				overflow: hidden;
+				user-select: none;
+				cursor: pointer;
+			}
+
+			.steam-card {
+				background: linear-gradient(180deg, #1b2838 0%, #171a21 100%);
+				color: #c5c3c0;
+				/* Скругленные углы */
+				border-radius: 4px;
+				/* Легкая обводка */
+				border: 1px solid #3d4450;
+				/* Тень */
+				box-shadow: 0 0 10px rgba(0, 0, 0, 0.7);
+
+				height: 100vh;
+				display: flex;
+				flex-direction: column;
+				justify-content: center;
+				padding: 16px;
+				box-sizing: border-box;
+
+				justify-content: center; /* Центрируем по вертикали */
+				align-items: center; /* Центрируем по горизонтали */
+				text-align: center;
+
+				/* Анимация появления */
+				animation: slideUp 0.3s ease-out;
+			}
+
+			/* При наведении делаем чуть светлее */
+			.steam-card:hover {
+				background: linear-gradient(180deg, #223246 0%, #1b2029 100%);
+				border-color: #4f5866;
+			}
+
+			.title {
+				font-size: 14px;
+				color: #66c0f4;
+				font-weight: bold;
+				margin-bottom: 8px;
+				text-transform: uppercase;
+				letter-spacing: 0.5px;
+				width: 100%;
+			}
+
+			.message {
+				font-size: 16px;
+				color: #ffffff;
+				font-weight: normal;
+				line-height: 1.4;
+			}
+
+			@keyframes slideUp {
+				from {
+					transform: translateY(20px);
+					opacity: 0;
+				}
+				to {
+					transform: translateY(0);
+					opacity: 1;
+				}
+			}
+		</style>
+	</head>
+	<body>
+		<div class="steam-card" id="card">
+			<div class="title">Health Break</div>
+			<div class="message">Время перерыва!</div>
+		</div>
+
+		<script>
+			const { invoke } = window.__TAURI__.core
+			const { listen } = window.__TAURI__.event
+
+			let timerId = null
+
+			function startTimer() {
+				// Если старый таймер тикает - убиваем его
+				if (timerId) clearTimeout(timerId)
+
+				console.log('Timer (re)started')
+				timerId = setTimeout(() => {
+					invoke('close_notification')
+				}, 5000)
+			}
+
+			// Слушаем сигнал от Rust
+			listen('notification-shown', () => {
+				startTimer()
+			})
+
+			// На всякий случай запускаем и при первой загрузке
+			startTimer()
+
+			document.getElementById('card').addEventListener('click', () => {
+				if (timerId) clearTimeout(timerId)
+				invoke('notification_clicked')
+			})
+		</script>
+	</body>
+</html>
