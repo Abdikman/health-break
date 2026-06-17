@@ -49,7 +49,10 @@
 
 			<!-- Вкладка: Каталог -->
 			<section id="catalog" class="tab-content">
-				<h1>Каталог упражнений</h1>
+				<div class="catalog-header">
+					<h1>Каталог упражнений</h1>
+					<button id="add-exercise-btn" class="add-exercise-btn">+ Добавить упражнение</button>
+				</div>
 				<div id="exercise-grid" class="exercise-grid">
 					<!-- Карточки будут здесь -->
 				</div>
@@ -70,16 +73,79 @@
 			</section>
 		</main>
 
+		<!-- Модалка: просмотр упражнения -->
 		<div id="exercise-modal" class="modal-overlay">
 			<div class="modal-content">
 				<button class="close-modal">&times;</button>
 				<div class="modal-body">
 					<h2 id="modal-title">Название</h2>
+					<div id="modal-tags" class="modal-tags"></div>
 					<div id="modal-media">
-						<!-- Сюда JS вставит img или video -->
+						<!-- Сюда JS вставит img -->
+					</div>
+					<div id="modal-video-container" class="modal-video-container">
+						<video id="modal-video" controls></video>
+					</div>
+					<div id="modal-audio-container" class="modal-audio-container">
+						<audio id="modal-audio" controls></audio>
 					</div>
 					<p id="modal-desc">Описание упражнения...</p>
+					<div class="modal-footer">
+						<button id="delete-exercise-btn" class="btn-delete">🗑 Удалить упражнение</button>
+					</div>
 				</div>
+			</div>
+		</div>
+
+		<!-- Модалка: добавление упражнения -->
+		<div id="add-exercise-modal" class="modal-overlay">
+			<div class="modal-content modal-content--form">
+				<button class="close-modal" id="close-add-modal">&times;</button>
+				<h2>Новое упражнение</h2>
+				<form id="add-exercise-form">
+					<div class="form-group">
+						<label for="new-ex-title">Название *</label>
+						<input type="text" id="new-ex-title" placeholder="Например: Разминка плеч" required>
+					</div>
+					<div class="form-group">
+						<label for="new-ex-desc">Описание *</label>
+						<textarea id="new-ex-desc" rows="4" placeholder="Опишите упражнение..." required></textarea>
+					</div>
+					<div class="form-group">
+						<label>Категории</label>
+						<div class="tag-checkboxes">
+							<label class="tag-label"><input type="checkbox" name="tag" value="глаза"> Глаза</label>
+							<label class="tag-label"><input type="checkbox" name="tag" value="шея"> Шея</label>
+							<label class="tag-label"><input type="checkbox" name="tag" value="спина"> Спина</label>
+							<label class="tag-label"><input type="checkbox" name="tag" value="кисти"> Кисти</label>
+							<label class="tag-label"><input type="checkbox" name="tag" value="другое"> Другое</label>
+						</div>
+					</div>
+					<div class="form-group">
+						<label>Изображения</label>
+						<button type="button" id="pick-images-btn" class="pick-file-btn">📂 Добавить изображения</button>
+						<div id="image-preview-strip" class="image-preview-strip"></div>
+					</div>
+					<div class="form-group">
+						<label>Медиа-сопровождение</label>
+						<div class="media-pickers">
+							<div class="file-picker-row">
+								<span class="media-type-label">🔊 Аудио</span>
+								<button type="button" id="pick-audio-btn" class="pick-file-btn">📂 Выбрать</button>
+								<span id="audio-file-label" class="file-label">Не выбрано</span>
+							</div>
+							<div class="file-picker-row">
+								<span class="media-type-label">🎬 Видео</span>
+								<button type="button" id="pick-video-btn" class="pick-file-btn">📂 Выбрать</button>
+								<span id="video-file-label" class="file-label">Не выбрано</span>
+							</div>
+						</div>
+					</div>
+					<div class="form-actions">
+						<button type="button" id="cancel-add-exercise" class="btn-secondary">Отмена</button>
+						<button type="submit" class="btn-primary">Сохранить</button>
+					</div>
+				</form>
 			</div>
 		</div>
 	</body>

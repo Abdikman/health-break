@@ -7,6 +7,7 @@ use std::sync::Mutex;
 use handler::commands;
 use handler::notification;
 use handler::audio;
+use handler::exercises;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -19,6 +20,7 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         
         // Инициализируем состояние
         .manage(AppState(Mutex::new(TimerState {
@@ -30,7 +32,6 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::start_timer,
             commands::stop_timer,
-            commands::get_exercises,
             commands::set_duration,
 
             notification::show_notification,
@@ -38,7 +39,15 @@ pub fn run() {
             notification::close_notification,
 
             audio::get_sounds,
-            audio::open_sounds_folder
+            audio::open_sounds_folder,
+
+            exercises::get_exercises,
+            exercises::add_user_exercise,
+            exercises::delete_user_exercise,
+            exercises::pick_exercise_audio,
+            exercises::get_exercise_audio_data,
+            exercises::pick_exercise_video,
+            exercises::pick_exercise_images
         ])
         
         .setup(|app| {
