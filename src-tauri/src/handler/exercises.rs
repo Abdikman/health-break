@@ -2,17 +2,25 @@ use tauri::{AppHandle, Manager};
 use std::fs;
 use serde::{Serialize, Deserialize};
 
+/// Одна картинка упражнения с привязанным описанием.
+#[derive(Serialize, Deserialize, Clone)]
+pub struct ExerciseImage {
+    pub path: String,
+    pub description: String,
+}
+
 #[derive(Serialize, Deserialize, Clone)]
 pub struct Exercise {
     pub id: String,
     pub title: String,
     pub description: String,
+    /// Статическая картинка для builtin-упражнений (относительный asset URL).
+    /// Пользовательские упражнения оставляют это поле None и используют images.
     pub image_url: Option<String>,
-    // User-selected images; builtins leave this empty and use image_url instead.
-    // #[serde(default)] ensures old exercises.json records without this field
-    // deserialize to an empty Vec rather than failing.
+    /// Пользовательские картинки с описаниями. #[serde(default)] обеспечивает
+    /// совместимость: старые записи без этого поля получат пустой Vec.
     #[serde(default)]
-    pub image_paths: Vec<String>,
+    pub images: Vec<ExerciseImage>,
     pub audio_path: Option<String>,
     pub video_path: Option<String>,
     pub tags: Vec<String>,
@@ -26,7 +34,7 @@ fn builtin_exercises() -> Vec<Exercise> {
             title: "Глаза: Вдаль".to_string(),
             description: "Посмотрите в окно на самый дальний объект и задержите взгляд на 20 секунд.".to_string(),
             image_url: Some("assets/exercises/eye_1.png".to_string()),
-            image_paths: vec![],
+            images: vec![],
             audio_path: None,
             video_path: None,
             tags: vec!["глаза".to_string()],
@@ -37,7 +45,7 @@ fn builtin_exercises() -> Vec<Exercise> {
             title: "Шея: Разминка".to_string(),
             description: "Медленные круговые движения головой. 5 раз в одну сторону, 5 в другую.".to_string(),
             image_url: Some("assets/exercises/neck_1.png".to_string()),
-            image_paths: vec![],
+            images: vec![],
             audio_path: None,
             video_path: None,
             tags: vec!["шея".to_string()],
@@ -48,7 +56,7 @@ fn builtin_exercises() -> Vec<Exercise> {
             title: "Спина: Потягивания".to_string(),
             description: "Встаньте, поднимите руки вверх и тянитесь к потолку.".to_string(),
             image_url: Some("assets/exercises/spine_1.png".to_string()),
-            image_paths: vec![],
+            images: vec![],
             audio_path: None,
             video_path: None,
             tags: vec!["спина".to_string()],
@@ -59,7 +67,7 @@ fn builtin_exercises() -> Vec<Exercise> {
             title: "Кисти рук".to_string(),
             description: "Вращайте кистями рук по часовой стрелке.".to_string(),
             image_url: Some("assets/exercises/wrists_1.png".to_string()),
-            image_paths: vec![],
+            images: vec![],
             audio_path: None,
             video_path: None,
             tags: vec!["кисти".to_string()],
@@ -73,6 +81,57 @@ fn exercises_file_path(app: &AppHandle) -> Result<std::path::PathBuf, String> {
     Ok(dir.join("exercises.json"))
 }
 
+/// Промежуточная структура для чтения exercises.json.
+/// Понимает как старый формат (image_paths: Vec<String>), так и новый
+/// (images: Vec<ExerciseImage>), что позволяет мигрировать без потери данных.
+#[derive(Deserialize)]
+struct UserExerciseOnDisk {
+    pub id: String,
+    pub title: String,
+    pub description: String,
+    #[serde(default)]
+    pub image_url: Option<String>,
+    /// Старый формат (до добавления описаний к фото)
+    #[serde(default)]
+    pub image_paths: Vec<String>,
+    /// Новый формат
+    #[serde(default)]
+    pub images: Vec<ExerciseImage>,
+    #[serde(default)]
+    pub audio_path: Option<String>,
+    #[serde(default)]
+    pub video_path: Option<String>,
+    #[serde(default)]
+    pub tags: Vec<String>,
+    #[serde(default)]
+    pub source: String,
+}
+
+impl From<UserExerciseOnDisk> for Exercise {
+    fn from(raw: UserExerciseOnDisk) -> Self {
+        // Новый формат имеет приоритет; если его нет — мигрируем из старого.
+        // Описания картинок при миграции оставляем пустыми.
+        let images = if !raw.images.is_empty() {
+            raw.images
+        } else {
+            raw.image_paths.into_iter()
+                .map(|path| ExerciseImage { path, description: String::new() })
+                .collect()
+        };
+        Exercise {
+            id: raw.id,
+            title: raw.title,
+            description: raw.description,
+            image_url: raw.image_url,
+            images,
+            audio_path: raw.audio_path,
+            video_path: raw.video_path,
+            tags: raw.tags,
+            source: if raw.source.is_empty() { "user".to_string() } else { raw.source },
+        }
+    }
+}
+
 fn load_user_exercises(app: &AppHandle) -> Vec<Exercise> {
     let path = match exercises_file_path(app) {
         Ok(p) => p,
@@ -81,10 +140,11 @@ fn load_user_exercises(app: &AppHandle) -> Vec<Exercise> {
     if !path.exists() {
         return vec![];
     }
-    fs::read_to_string(&path)
+    let raw: Vec<UserExerciseOnDisk> = fs::read_to_string(&path)
         .ok()
         .and_then(|s| serde_json::from_str(&s).ok())
-        .unwrap_or_default()
+        .unwrap_or_default();
+    raw.into_iter().map(Exercise::from).collect()
 }
 
 fn save_user_exercises(app: &AppHandle, exercises: &[Exercise]) -> Result<(), String> {
@@ -108,7 +168,7 @@ pub struct NewExercisePayload {
     pub title: String,
     pub description: String,
     pub tags: Vec<String>,
-    pub image_paths: Vec<String>,
+    pub images: Vec<ExerciseImage>,
     pub audio_path: Option<String>,
     pub video_path: Option<String>,
 }
@@ -128,7 +188,7 @@ pub fn add_user_exercise(app: AppHandle, payload: NewExercisePayload) -> Result<
         description: payload.description,
         tags: payload.tags,
         image_url: None,
-        image_paths: payload.image_paths,
+        images: payload.images,
         audio_path: payload.audio_path,
         video_path: payload.video_path,
         source: "user".to_string(),
@@ -163,12 +223,9 @@ pub fn pick_exercise_audio(app: AppHandle) -> Option<String> {
         })
 }
 
-// Reads an audio file and returns base64-encoded content so the frontend can
-// construct a data: URL. This avoids expanding assetProtocol.scope to arbitrary
-// filesystem paths — the current scope is limited to $APPDATA/sounds/ and we
-// want to keep it that way. The tradeoff vs. expanding scope: a bit more IPC
-// overhead when opening the modal, but no webview-level file system access
-// outside the declared scope.
+// Читает аудиофайл и возвращает base64, чтобы фронт мог сделать data: URL.
+// Не расширяем assetProtocol.scope — он ограничен $APPDATA/sounds/.
+// Трейдоф: небольшой IPC-оверхед при открытии модалки.
 #[tauri::command]
 pub fn get_exercise_audio_data(path: String) -> Result<String, String> {
     use base64::{Engine as _, engine::general_purpose};
@@ -176,9 +233,8 @@ pub fn get_exercise_audio_data(path: String) -> Result<String, String> {
     Ok(general_purpose::STANDARD.encode(&bytes))
 }
 
-// Unlike audio, video files can be hundreds of MB — base64 over IPC is not viable.
-// Instead the frontend uses convertFileSrc() to stream via the asset protocol.
-// assetProtocol.scope in tauri.conf.json is expanded to ["**"] to allow this.
+// Видео передаём через convertFileSrc (asset protocol, scope: "**"),
+// потому что base64 для видео неприемлем по размеру.
 #[tauri::command]
 pub fn pick_exercise_video(app: AppHandle) -> Option<String> {
     use tauri_plugin_dialog::{DialogExt, FilePath};
@@ -192,9 +248,8 @@ pub fn pick_exercise_video(app: AppHandle) -> Option<String> {
         })
 }
 
-// Returns all selected image paths; empty vec if user cancels.
-// The frontend accumulates calls across multiple dialog opens so users can
-// add images incrementally. Paths are served via convertFileSrc() + asset protocol.
+// Возвращает выбранные пути; пустой Vec если отменили.
+// Накопление нескольких вызовов делается на стороне фронта.
 #[tauri::command]
 pub fn pick_exercise_images(app: AppHandle) -> Vec<String> {
     use tauri_plugin_dialog::{DialogExt, FilePath};

@@ -56,35 +56,42 @@ export function setupCatalog() {
 	// --- Состояние ---
 	let exercises = []
 	let currentExercise = null
-	// Форма
-	let selectedImagePaths = []
+	// Форма: каждый элемент — { path: string, description: string }
+	let selectedImages = []
 	let selectedAudioPath = null
 	let selectedVideoPath = null
 	// Галерея в модалке просмотра
+	// galleryImages: { src: string, description: string }[]
 	let galleryImages = []
 	let currentImageIndex = 0
 	let galleryMainImg = null
 	let galleryThumbStrip = null
+	let galleryPhotoDesc = null   // <p> с описанием текущего фото
 
 	// ---- Вспомогательные функции ----
 
-	// Нормализует картинки упражнения в массив src.
+	// Нормализует картинки упражнения в { src, description }[].
 	// builtin: image_url — статический asset, convertFileSrc не нужен.
-	// user: image_paths — произвольные пути, нужен convertFileSrc.
+	// user: images[].path — произвольный путь, нужен convertFileSrc.
 	function getImages(ex) {
-		if (ex.image_paths && ex.image_paths.length > 0) {
-			return ex.image_paths.map(p => convertFileSrc(p))
+		if (ex.images && ex.images.length > 0) {
+			return ex.images.map(img => ({
+				src: convertFileSrc(img.path),
+				description: img.description || '',
+			}))
 		}
-		if (ex.image_url) return [ex.image_url]
+		if (ex.image_url) return [{ src: ex.image_url, description: '' }]
 		return []
 	}
 
-	// Переключает галерею на указанный индекс (или сдвигает на delta от текущего).
-	// Зацикливание в обе стороны.
+	// Переключает галерею: обновляет главное фото, описание фото и активную миниатюру.
+	// delta=0 используется для прямого перехода по индексу (клик по миниатюре).
 	function navigateGallery(delta) {
 		if (galleryImages.length <= 1) return
 		currentImageIndex = (currentImageIndex + delta + galleryImages.length) % galleryImages.length
-		if (galleryMainImg) galleryMainImg.src = galleryImages[currentImageIndex]
+		const current = galleryImages[currentImageIndex]
+		if (galleryMainImg) galleryMainImg.src = current.src
+		if (galleryPhotoDesc) galleryPhotoDesc.textContent = current.description
 		if (galleryThumbStrip) {
 			galleryThumbStrip.querySelectorAll('.modal-gallery-thumb').forEach((t, i) => {
 				t.classList.toggle('active', i === currentImageIndex)
@@ -92,8 +99,8 @@ export function setupCatalog() {
 		}
 	}
 
-	// Обработчик клавиатурной навигации: добавляется при открытии модалки,
-	// снимается при закрытии. Не перехватывает стрелки, если фокус на видео-плеере.
+	// Клавиатурная навигация: добавляется при открытии, снимается при закрытии.
+	// Не перехватывает стрелки, если фокус на видео-плеере.
 	function handleGalleryKeys(e) {
 		if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return
 		if (galleryImages.length <= 1) return
@@ -120,6 +127,7 @@ export function setupCatalog() {
 		currentImageIndex = 0
 		galleryMainImg = null
 		galleryThumbStrip = null
+		galleryPhotoDesc = null
 		currentExercise = null
 	}
 
@@ -137,7 +145,8 @@ export function setupCatalog() {
 	async function openDetailModal(data) {
 		currentExercise = data
 		mTitle.textContent = data.title
-		mDesc.textContent = data.description
+		// Общее описание упражнения (тизер/общий текст)
+		if (mDesc) mDesc.textContent = data.description
 
 		if (mTags) {
 			mTags.innerHTML = data.tags && data.tags.length
@@ -156,7 +165,7 @@ export function setupCatalog() {
 			}
 		}
 
-		// Галерея картинок
+		// Галерея картинок с описаниями к каждому фото
 		renderModalGallery(getImages(data))
 
 		// Аудио: base64 через Rust, чтобы не расширять assetProtocol.scope
@@ -182,8 +191,7 @@ export function setupCatalog() {
 			deleteBtn.style.display = data.source === 'user' ? 'inline-flex' : 'none'
 		}
 
-		// Подключаем клавиатурную навигацию — removeEventListener перед add
-		// гарантирует отсутствие дублей при повторном открытии без явного закрытия
+		// removeEventListener перед add гарантирует ровно один обработчик
 		document.removeEventListener('keydown', handleGalleryKeys)
 		document.addEventListener('keydown', handleGalleryKeys)
 
@@ -191,21 +199,32 @@ export function setupCatalog() {
 	}
 
 	// Рендерит блок картинок в mMedia.
-	// 0 фото → пусто. 1 фото → одиночный <img>. 2+ → крупный слайд + стрелки + полоска миниатюр.
+	// images: { src, description }[]
+	// 0 фото → пусто.
+	// 1 фото → одиночный <img> + описание фото.
+	// 2+ → крупный слайд + стрелки + описание фото + полоска миниатюр.
 	function renderModalGallery(images) {
 		mMedia.innerHTML = ''
 		galleryImages = images
 		currentImageIndex = 0
 		galleryMainImg = null
 		galleryThumbStrip = null
+		galleryPhotoDesc = null
 
 		if (images.length === 0) return
 
 		if (images.length === 1) {
 			const img = document.createElement('img')
-			img.src = images[0]
+			img.src = images[0].src
 			img.className = 'modal-img'
 			mMedia.appendChild(img)
+
+			// Описание единственного фото (если есть)
+			const desc = document.createElement('p')
+			desc.className = 'gallery-photo-desc'
+			desc.textContent = images[0].description
+			galleryPhotoDesc = desc
+			mMedia.appendChild(desc)
 			return
 		}
 
@@ -218,7 +237,7 @@ export function setupCatalog() {
 
 		const mainImg = document.createElement('img')
 		mainImg.className = 'modal-gallery-main'
-		mainImg.src = images[0]
+		mainImg.src = images[0].src
 		galleryMainImg = mainImg
 
 		const prevBtn = document.createElement('button')
@@ -240,13 +259,20 @@ export function setupCatalog() {
 		wrap.appendChild(nextBtn)
 		gallery.appendChild(wrap)
 
+		// Описание текущего фото — между главным изображением и полоской миниатюр
+		const photoDesc = document.createElement('p')
+		photoDesc.className = 'gallery-photo-desc'
+		photoDesc.textContent = images[0].description
+		galleryPhotoDesc = photoDesc
+		gallery.appendChild(photoDesc)
+
 		const strip = document.createElement('div')
 		strip.className = 'modal-gallery-strip'
 		galleryThumbStrip = strip
 
-		images.forEach((src, i) => {
+		images.forEach((item, i) => {
 			const thumb = document.createElement('img')
-			thumb.src = src
+			thumb.src = item.src
 			thumb.className = 'modal-gallery-thumb' + (i === 0 ? ' active' : '')
 			thumb.addEventListener('click', () => {
 				currentImageIndex = i
@@ -271,7 +297,7 @@ export function setupCatalog() {
 	function closeAddModal() {
 		addModal.classList.remove('active')
 		addForm.reset()
-		selectedImagePaths = []
+		selectedImages = []
 		selectedAudioPath = null
 		selectedVideoPath = null
 		if (imagePreviewStrip) imagePreviewStrip.innerHTML = ''
@@ -279,36 +305,59 @@ export function setupCatalog() {
 		if (videoFileLabel) videoFileLabel.textContent = 'Не выбрано'
 	}
 
+	// Перерисовывает список превью с полями описания.
+	// Описания, уже введённые пользователем, хранятся в selectedImages[i].description
+	// и восстанавливаются при перерисовке (например, после удаления другого фото).
 	function renderImagePreviews() {
 		if (!imagePreviewStrip) return
 		imagePreviewStrip.innerHTML = ''
-		selectedImagePaths.forEach((path, i) => {
-			const item = document.createElement('div')
-			item.className = 'image-preview-item'
+
+		selectedImages.forEach((item, i) => {
+			const row = document.createElement('div')
+			row.className = 'image-preview-item'
+
+			// Обёртка миниатюры с кнопкой удаления
+			const thumbWrap = document.createElement('div')
+			thumbWrap.className = 'image-preview-thumb-wrap'
 
 			const img = document.createElement('img')
-			img.src = convertFileSrc(path)
+			img.src = convertFileSrc(item.path)
+			img.alt = ''
 
 			const removeBtn = document.createElement('button')
 			removeBtn.type = 'button'
 			removeBtn.className = 'remove-img-btn'
 			removeBtn.textContent = '×'
 			removeBtn.addEventListener('click', () => {
-				selectedImagePaths.splice(i, 1)
+				selectedImages.splice(i, 1)
 				renderImagePreviews()
 			})
 
-			item.appendChild(img)
-			item.appendChild(removeBtn)
-			imagePreviewStrip.appendChild(item)
+			thumbWrap.appendChild(img)
+			thumbWrap.appendChild(removeBtn)
+
+			// Поле описания для этого фото
+			const caption = document.createElement('textarea')
+			caption.className = 'img-caption-input'
+			caption.placeholder = 'Описание этого фото...'
+			caption.rows = 3
+			caption.value = item.description
+			caption.addEventListener('input', () => {
+				selectedImages[i].description = caption.value
+			})
+
+			row.appendChild(thumbWrap)
+			row.appendChild(caption)
+			imagePreviewStrip.appendChild(row)
 		})
 	}
 
+	// Выбор картинок: добавляем к уже накопленному массиву (не заменяем).
 	pickImagesBtn?.addEventListener('click', async () => {
 		try {
 			const paths = await invoke('pick_exercise_images')
 			if (paths && paths.length > 0) {
-				selectedImagePaths.push(...paths)
+				paths.forEach(path => selectedImages.push({ path, description: '' }))
 				renderImagePreviews()
 			}
 		} catch (e) {
@@ -358,7 +407,8 @@ export function setupCatalog() {
 					title,
 					description,
 					tags,
-					image_paths: selectedImagePaths,
+					// Передаём полные объекты { path, description }
+					images: selectedImages,
 					audio_path: selectedAudioPath,
 					video_path: selectedVideoPath,
 				},
@@ -389,8 +439,9 @@ export function setupCatalog() {
 				const isUser = ex.source === 'user'
 				const images = getImages(ex)
 
+				// Обложка карточки — первое изображение из списка
 				const imgContent = images.length > 0
-					? `<img src="${images[0]}" class="card-img" alt="${ex.title}">`
+					? `<img src="${images[0].src}" class="card-img" alt="${ex.title}">`
 					: '<div class="card-img-placeholder">🏃</div>'
 
 				const tagsHtml = ex.tags && ex.tags.length
