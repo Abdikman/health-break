@@ -81,6 +81,46 @@ fn exercises_file_path(app: &AppHandle) -> Result<std::path::PathBuf, String> {
     Ok(dir.join("exercises.json"))
 }
 
+/// Копирует файл src_path в $APPDATA/exercise_media/{subdir}/ с уникальным именем
+/// {timestamp_millis}_{оригинальное_имя}. Возвращает полный путь к копии.
+///
+/// Используется для всех типов медиа (audio/images/video), чтобы упражнение
+/// не зависело от исходного расположения файла на диске пользователя.
+fn copy_to_media_dir(app: &AppHandle, src_path: &str, subdir: &str) -> Result<String, String> {
+    let appdata = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let dest_dir = appdata.join("exercise_media").join(subdir);
+    fs::create_dir_all(&dest_dir).map_err(|e| e.to_string())?;
+
+    let src = std::path::Path::new(src_path);
+    let filename = src
+        .file_name()
+        .ok_or_else(|| format!("Не удалось определить имя файла: {}", src_path))?
+        .to_string_lossy();
+
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
+
+    let unique_name = format!("{}_{}", ts, filename);
+    let dest_path = dest_dir.join(&unique_name);
+
+    fs::copy(src_path, &dest_path)
+        .map_err(|e| format!("Ошибка копирования '{}': {}", src_path, e))?;
+
+    Ok(dest_path.display().to_string())
+}
+
+/// Удаляет файл, только если он находится внутри нашей папки exercise_media.
+/// Это защищает исходные файлы пользователя в упражнениях старого формата
+/// (созданных до введения копирования), где путь ведёт не в appdata.
+fn delete_if_in_media_dir(path: &str, media_dir: &std::path::Path) {
+    let p = std::path::Path::new(path);
+    if p.starts_with(media_dir) {
+        let _ = fs::remove_file(p);
+    }
+}
+
 /// Промежуточная структура для чтения exercises.json.
 /// Понимает как старый формат (image_paths: Vec<String>), так и новый
 /// (images: Vec<ExerciseImage>), что позволяет мигрировать без потери данных.
@@ -182,6 +222,8 @@ pub fn add_user_exercise(app: AppHandle, payload: NewExercisePayload) -> Result<
         .map(|d| d.as_millis().to_string())
         .unwrap_or_else(|_| format!("user_{}", user_exercises.len() + 1));
 
+    // Пути в payload уже указывают на копии в exercise_media — copy_to_media_dir
+    // вызывается в pick_exercise_*, здесь ничего дополнительно не копируем.
     let exercise = Exercise {
         id,
         title: payload.title,
@@ -202,6 +244,25 @@ pub fn add_user_exercise(app: AppHandle, payload: NewExercisePayload) -> Result<
 #[tauri::command]
 pub fn delete_user_exercise(app: AppHandle, id: String) -> Result<(), String> {
     let mut user_exercises = load_user_exercises(&app);
+
+    // Удаляем медиафайлы упражнения из exercise_media до изменения списка.
+    // Защита: удаляем только файлы внутри нашей exercise_media, чтобы не тронуть
+    // исходные файлы пользователя у упражнений старого формата.
+    if let Ok(appdata) = app.path().app_data_dir() {
+        let media_dir = appdata.join("exercise_media");
+        if let Some(ex) = user_exercises.iter().find(|e| e.id == id) {
+            if let Some(ref path) = ex.audio_path {
+                delete_if_in_media_dir(path, &media_dir);
+            }
+            if let Some(ref path) = ex.video_path {
+                delete_if_in_media_dir(path, &media_dir);
+            }
+            for img in &ex.images {
+                delete_if_in_media_dir(&img.path, &media_dir);
+            }
+        }
+    }
+
     let before = user_exercises.len();
     user_exercises.retain(|e| e.id != id);
     if user_exercises.len() == before {
@@ -210,22 +271,27 @@ pub fn delete_user_exercise(app: AppHandle, id: String) -> Result<(), String> {
     save_user_exercises(&app, &user_exercises)
 }
 
+/// Открывает диалог выбора аудио, копирует файл в $APPDATA/exercise_media/audio/
+/// и возвращает путь к копии. None — если пользователь отменил или копирование не удалось.
 #[tauri::command]
 pub fn pick_exercise_audio(app: AppHandle) -> Option<String> {
     use tauri_plugin_dialog::{DialogExt, FilePath};
-    app.dialog()
+    let src = app.dialog()
         .file()
         .add_filter("Audio", &["mp3", "wav"])
         .blocking_pick_file()
         .map(|f| match f {
             FilePath::Path(p) => p.display().to_string(),
             FilePath::Url(u) => u.to_string(),
-        })
+        })?;
+
+    copy_to_media_dir(&app, &src, "audio")
+        .map_err(|e| eprintln!("Ошибка копирования аудио: {}", e))
+        .ok()
 }
 
 // Читает аудиофайл и возвращает base64, чтобы фронт мог сделать data: URL.
-// Не расширяем assetProtocol.scope — он ограничен $APPDATA/sounds/.
-// Трейдоф: небольшой IPC-оверхед при открытии модалки.
+// Файл теперь всегда находится в exercise_media/audio внутри appdata.
 #[tauri::command]
 pub fn get_exercise_audio_data(path: String) -> Result<String, String> {
     use base64::{Engine as _, engine::general_purpose};
@@ -233,27 +299,32 @@ pub fn get_exercise_audio_data(path: String) -> Result<String, String> {
     Ok(general_purpose::STANDARD.encode(&bytes))
 }
 
-// Видео передаём через convertFileSrc (asset protocol, scope: "**"),
-// потому что base64 для видео неприемлем по размеру.
+/// Открывает диалог выбора видео, копирует файл в $APPDATA/exercise_media/video/
+/// и возвращает путь к копии. None — если пользователь отменил или копирование не удалось.
 #[tauri::command]
 pub fn pick_exercise_video(app: AppHandle) -> Option<String> {
     use tauri_plugin_dialog::{DialogExt, FilePath};
-    app.dialog()
+    let src = app.dialog()
         .file()
         .add_filter("Video", &["mp4", "webm", "mov"])
         .blocking_pick_file()
         .map(|f| match f {
             FilePath::Path(p) => p.display().to_string(),
             FilePath::Url(u) => u.to_string(),
-        })
+        })?;
+
+    copy_to_media_dir(&app, &src, "video")
+        .map_err(|e| eprintln!("Ошибка копирования видео: {}", e))
+        .ok()
 }
 
-// Возвращает выбранные пути; пустой Vec если отменили.
-// Накопление нескольких вызовов делается на стороне фронта.
+/// Открывает диалог выбора изображений (множественный выбор), копирует каждый файл
+/// в $APPDATA/exercise_media/images/ и возвращает список путей к копиям.
+/// Файлы, которые не удалось скопировать, пропускаются; пустой Vec — если отменили.
 #[tauri::command]
 pub fn pick_exercise_images(app: AppHandle) -> Vec<String> {
     use tauri_plugin_dialog::{DialogExt, FilePath};
-    app.dialog()
+    let src_paths: Vec<String> = app.dialog()
         .file()
         .add_filter("Images", &["png", "jpg", "jpeg", "webp"])
         .blocking_pick_files()
@@ -262,6 +333,14 @@ pub fn pick_exercise_images(app: AppHandle) -> Vec<String> {
         .map(|f| match f {
             FilePath::Path(p) => p.display().to_string(),
             FilePath::Url(u) => u.to_string(),
+        })
+        .collect();
+
+    src_paths.into_iter()
+        .filter_map(|src| {
+            copy_to_media_dir(&app, &src, "images")
+                .map_err(|e| eprintln!("Ошибка копирования изображения: {}", e))
+                .ok()
         })
         .collect()
 }
