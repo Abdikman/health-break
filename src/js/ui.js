@@ -70,17 +70,28 @@ export function setupCatalog() {
 
 	// ---- Вспомогательные функции ----
 
+	// Экранирует HTML-спецсимволы перед вставкой пользовательских строк в innerHTML.
+	function escapeHtml(str) {
+		return String(str)
+			.replace(/&/g, '&amp;')
+			.replace(/</g, '&lt;')
+			.replace(/>/g, '&gt;')
+			.replace(/"/g, '&quot;')
+	}
+
 	// Нормализует картинки упражнения в { src, description }[].
 	// builtin: image_url — статический asset, convertFileSrc не нужен.
 	// user: images[].path — произвольный путь, нужен convertFileSrc.
 	function getImages(ex) {
 		if (ex.images && ex.images.length > 0) {
 			return ex.images.map(img => ({
-				src: convertFileSrc(img.path),
+				// builtin-упражнения используют относительные asset-пути (assets/...),
+				// которые браузер разрешает напрямую — convertFileSrc применять нельзя.
+				// user-упражнения используют абсолютные пути в appdata — нужен convertFileSrc.
+				src: ex.source === 'builtin' ? img.path : convertFileSrc(img.path),
 				description: img.description || '',
 			}))
 		}
-		if (ex.image_url) return [{ src: ex.image_url, description: '' }]
 		return []
 	}
 
@@ -353,12 +364,16 @@ export function setupCatalog() {
 	}
 
 	// Выбор картинок: добавляем к уже накопленному массиву (не заменяем).
+	// Rust возвращает { paths, errors } — показываем предупреждение если часть файлов не скопировалась.
 	pickImagesBtn?.addEventListener('click', async () => {
 		try {
-			const paths = await invoke('pick_exercise_images')
-			if (paths && paths.length > 0) {
-				paths.forEach(path => selectedImages.push({ path, description: '' }))
+			const result = await invoke('pick_exercise_images')
+			if (result.paths && result.paths.length > 0) {
+				result.paths.forEach(path => selectedImages.push({ path, description: '' }))
 				renderImagePreviews()
+			}
+			if (result.errors && result.errors.length > 0) {
+				alert(`Не удалось скопировать файл(ы):\n${result.errors.join('\n')}`)
 			}
 		} catch (e) {
 			console.error('Ошибка выбора изображений:', e)
@@ -441,11 +456,11 @@ export function setupCatalog() {
 
 				// Обложка карточки — первое изображение из списка
 				const imgContent = images.length > 0
-					? `<img src="${images[0].src}" class="card-img" alt="${ex.title}">`
+					? `<img src="${images[0].src}" class="card-img" alt="${escapeHtml(ex.title)}">`
 					: '<div class="card-img-placeholder">🏃</div>'
 
 				const tagsHtml = ex.tags && ex.tags.length
-					? `<div class="card-tags">${ex.tags.map(t => `<span class="tag">${t}</span>`).join('')}</div>`
+					? `<div class="card-tags">${ex.tags.map(t => `<span class="tag">${escapeHtml(t)}</span>`).join('')}</div>`
 					: ''
 
 				const mediaBadge = ex.video_path
@@ -465,7 +480,7 @@ export function setupCatalog() {
 							${imgCountBadge}
 						</div>
 						<div class="card-info">
-							<div class="card-title">${ex.title}</div>
+							<div class="card-title">${escapeHtml(ex.title)}</div>
 							${tagsHtml}
 						</div>
 					</div>

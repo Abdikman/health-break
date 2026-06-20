@@ -31,10 +31,27 @@ fn builtin_exercises() -> Vec<Exercise> {
     vec![
         Exercise {
             id: "1".to_string(),
-            title: "Глаза: Вдаль".to_string(),
-            description: "Посмотрите в окно на самый дальний объект и задержите взгляд на 20 секунд.".to_string(),
-            image_url: Some("assets/exercises/eye_1.png".to_string()),
-            images: vec![],
+            title: "Глаза".to_string(),
+            description: "Упражнение для расслабления мышц глаз".to_string(),
+            image_url: None,
+            images: vec![
+                ExerciseImage {
+                    path: "assets/exercises/eye_1.png".to_string(),
+                    description: "Движения глаз вправо и влево до упора - 15 повторений".to_string()
+                },
+                ExerciseImage {
+                    path: "assets/exercises/eye_2.png".to_string(),
+                    description: "Движения глаз вверх и вниз - 15 повторений".to_string()
+                },
+                ExerciseImage {
+                    path: "assets/exercises/eye_3.png".to_string(),
+                    description: "Круговые движения глаз по часовой и против часовой стрелки - по 5 повторений в каждую сторону".to_string()
+                },
+                ExerciseImage {
+                    path: "assets/exercises/eye_4.png".to_string(),
+                    description: "Восьмёрка в одну и в другую сторону - по 5 повторений в каждую сторону".to_string()
+                },
+            ],
             audio_path: None,
             video_path: None,
             tags: vec!["глаза".to_string()],
@@ -42,10 +59,23 @@ fn builtin_exercises() -> Vec<Exercise> {
         },
         Exercise {
             id: "2".to_string(),
-            title: "Шея: Разминка".to_string(),
-            description: "Медленные круговые движения головой. 5 раз в одну сторону, 5 в другую.".to_string(),
-            image_url: Some("assets/exercises/neck_1.png".to_string()),
-            images: vec![],
+            title: "Шея".to_string(),
+            description: "Упражнение для расслабления мышц шеи".to_string(),
+            image_url: None,
+            images: vec![
+                ExerciseImage {
+                    path: "assets/exercises/neck_1.png".to_string(),
+                    description: "Наклон головы влево и вправо - по 15 повторений".to_string()
+                },
+                ExerciseImage {
+                    path: "assets/exercises/neck_2.png".to_string(),
+                    description: "Наклон головы вперёд-назад - по 15 повторений".to_string()
+                },
+                ExerciseImage {
+                    path: "assets/exercises/neck_3.png".to_string(),
+                    description: "Поворот головы влево и вправо - по 15 повторений".to_string()
+                },
+            ],
             audio_path: None,
             video_path: None,
             tags: vec!["шея".to_string()],
@@ -53,24 +83,26 @@ fn builtin_exercises() -> Vec<Exercise> {
         },
         Exercise {
             id: "3".to_string(),
-            title: "Спина: Потягивания".to_string(),
-            description: "Встаньте, поднимите руки вверх и тянитесь к потолку.".to_string(),
-            image_url: Some("assets/exercises/spine_1.png".to_string()),
-            images: vec![],
+            title: "Спина".to_string(),
+            description: "Упражнение для снятия напряжения в спине".to_string(),
+            image_url: None,
+            images: vec![
+                ExerciseImage {
+                    path: "assets/exercises/spine_1.png".to_string(),
+                    description: "Поворот верхней части корпуса - по 15 повторений".to_string()
+                },
+                ExerciseImage {
+                    path: "assets/exercises/spine_2.png".to_string(),
+                    description: "Наклон корпуса влево и вправо - по 15 повторений".to_string()
+                },
+                ExerciseImage {
+                    path: "assets/exercises/spine_3.png".to_string(),
+                    description: "Наклон верхней части корпуса влево-вправо - по 15 повторений".to_string()
+                },
+            ],
             audio_path: None,
             video_path: None,
             tags: vec!["спина".to_string()],
-            source: "builtin".to_string(),
-        },
-        Exercise {
-            id: "4".to_string(),
-            title: "Кисти рук".to_string(),
-            description: "Вращайте кистями рук по часовой стрелке.".to_string(),
-            image_url: Some("assets/exercises/wrists_1.png".to_string()),
-            images: vec![],
-            audio_path: None,
-            video_path: None,
-            tags: vec!["кисти".to_string()],
             source: "builtin".to_string(),
         },
     ]
@@ -318,11 +350,18 @@ pub fn pick_exercise_video(app: AppHandle) -> Option<String> {
         .ok()
 }
 
+/// Результат выбора изображений: успешно скопированные пути и имена файлов, которые не удалось скопировать.
+#[derive(Serialize)]
+pub struct PickImagesResult {
+    pub paths: Vec<String>,
+    pub errors: Vec<String>,
+}
+
 /// Открывает диалог выбора изображений (множественный выбор), копирует каждый файл
-/// в $APPDATA/exercise_media/images/ и возвращает список путей к копиям.
-/// Файлы, которые не удалось скопировать, пропускаются; пустой Vec — если отменили.
+/// в $APPDATA/exercise_media/images/ и возвращает пути к копиям.
+/// В errors — имена файлов, которые не удалось скопировать (чтобы пользователь получил уведомление).
 #[tauri::command]
-pub fn pick_exercise_images(app: AppHandle) -> Vec<String> {
+pub fn pick_exercise_images(app: AppHandle) -> PickImagesResult {
     use tauri_plugin_dialog::{DialogExt, FilePath};
     let src_paths: Vec<String> = app.dialog()
         .file()
@@ -336,11 +375,22 @@ pub fn pick_exercise_images(app: AppHandle) -> Vec<String> {
         })
         .collect();
 
-    src_paths.into_iter()
-        .filter_map(|src| {
-            copy_to_media_dir(&app, &src, "images")
-                .map_err(|e| eprintln!("Ошибка копирования изображения: {}", e))
-                .ok()
-        })
-        .collect()
+    let mut paths = Vec::new();
+    let mut errors = Vec::new();
+
+    for src in src_paths {
+        match copy_to_media_dir(&app, &src, "images") {
+            Ok(dest) => paths.push(dest),
+            Err(e) => {
+                eprintln!("Ошибка копирования изображения: {}", e);
+                let fname = std::path::Path::new(&src)
+                    .file_name()
+                    .map(|n| n.to_string_lossy().to_string())
+                    .unwrap_or_else(|| src.clone());
+                errors.push(fname);
+            }
+        }
+    }
+
+    PickImagesResult { paths, errors }
 }

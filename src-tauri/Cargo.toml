@@ -1,6 +1,6 @@
 [package]
 name = "health-break-tauri"
-version = "0.7.0"
+version = "0.8.2"
 description = "Health Break - A cross-platform desktop application to remind you to take breaks and stay healthy."
 authors = ["Abdik", "Raha"]
 edition = "2021"
